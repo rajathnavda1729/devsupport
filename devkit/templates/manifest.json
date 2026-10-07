@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "01-requirements",
+      "title": "Requirements"
+    },
+    {
+      "id": "02-design",
+      "title": "Design & decisions"
+    },
+    {
+      "id": "03-delivery",
+      "title": "Delivery"
+    },
+    {
+      "id": "04-quality",
+      "title": "Quality"
+    }
+  ],
+  "documents": [
+    {
+      "type": "input",
+      "title": "Raw requirement",
+      "path": "01-requirements/input.md",
+      "template": "feature/input.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "devkit"
+    },
+    {
+      "type": "requirements",
+      "title": "Requirements (FR / NFR / critical)",
+      "path": "01-requirements/requirements.md",
+      "template": "feature/requirements.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "requirements-breakdown"
+    },
+    {
+      "type": "solutioning",
+      "title": "Solutioning (decisions, patterns, options, benchmark)",
+      "path": "02-design/solutioning.md",
+      "template": "feature/solutioning.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "solutioning"
+    },
+    {
+      "type": "hld",
+      "title": "High-level design",
+      "path": "02-design/hld.md",
+      "template": "feature/hld.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "hld"
+    },
+    {
+      "type": "lld",
+      "title": "Low-level design",
+      "path": "02-design/lld.md",
+      "template": "feature/lld.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "lld"
+    },
+    {
+      "type": "design-review",
+      "title": "Design review",
+      "path": "02-design/reviews/design-review.md",
+      "template": "feature/design-review.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "design-reviewer (agent)"
+    },
+    {
+      "type": "tasks",
+      "title": "Task tracker data",
+      "path": "03-delivery/tasks.json",
+      "kind": "generated",
+      "pipeline": true,
+      "skill": "task-breakdown"
+    },
+    {
+      "type": "board",
+      "title": "Task board",
+      "path": "03-delivery/TASKS.md",
+      "kind": "generated",
+      "skill": "task-tracker"
+    },
+    {
+      "type": "execution-plan",
+      "title": "Execution plan",
+      "path": "03-delivery/execution-plan.md",
+      "template": "feature/execution-plan.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "execution-plan"
+    },
+    {
+      "type": "readiness",
+      "title": "Implementation readiness report",
+      "path": "03-delivery/readiness.md",
+      "kind": "generated",
+      "skill": "implementation-readiness"
+    },
+    {
+      "type": "testing-guide",
+      "title": "Testing guide",
+      "path": "04-quality/testing-guide.md",
+      "template": "feature/testing-guide.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "testing-guide"
+    },
+    {
+      "type": "test-plan",
+      "title": "Test plan",
+      "path": "04-quality/test-plan.md",
+      "template": "feature/test-plan.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "test-plan"
+    },
+    {
+      "type": "traceability",
+      "title": "Traceability matrix",
+      "path": "04-quality/traceability.md",
+      "kind": "generated",
+      "skill": "test-plan"
+    },
+    {
+      "type": "benchmark-plan",
+      "title": "Benchmark plan",
+      "path": "04-quality/benchmark-plan.md",
+      "template": "feature/benchmark-plan.md",
+      "kind": "authored",
+      "pipeline": true,
+      "skill": "benchmark"
+    },
+    {
+      "type": "test-report",
+      "title": "Test report",
+      "path": "04-quality/test-report.md",
+      "template": "feature/test-report.md",
+      "kind": "authored",
+      "pipeline": false,
+      "skill": "test-plan"
+    }
+  ],
+  "dirs": [
+    "02-design/decisions",
+    "02-design/reviews",
+    "04-quality/benchmarks"
+  ],
+  "adr": {
+    "template": "adr.md",
+    "feature_dir": "02-design/decisions",
+    "default_repo_dir": "docs/adr"
+  }
+}

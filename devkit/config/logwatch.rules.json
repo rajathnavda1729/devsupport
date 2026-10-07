@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {"name": "unhandled-exception", "pattern": "Traceback \\(most recent call last\\)|Unhandled(Promise)?Rejection|uncaught exception|panic:", "severity": "critical", "threshold": 1, "window_sec": 60},
+    {"name": "out-of-memory", "pattern": "OutOfMemory|out of memory|heap out of memory|OOMKilled|MemoryError", "severity": "critical", "threshold": 1, "window_sec": 60},
+    {"name": "connection-refused", "pattern": "ECONNREFUSED|Connection refused|ConnectionRefusedError", "severity": "high", "threshold": 3, "window_sec": 30},
+    {"name": "timeout-burst", "pattern": "timed? ?out|ETIMEDOUT|deadline exceeded", "severity": "high", "threshold": 5, "window_sec": 60},
+    {"name": "http-5xx-burst", "pattern": "\\b(?:HTTP/\\d(?:\\.\\d)?\"?\\s+|status[=:\\s\"]+)5\\d\\d\\b", "severity": "high", "threshold": 5, "window_sec": 60},
+    {"name": "db-deadlock", "pattern": "deadlock detected|Deadlock found|lock wait timeout", "severity": "high", "threshold": 1, "window_sec": 60},
+    {"name": "auth-failures", "pattern": "\\b(401|403)\\b.*(unauthori[sz]ed|forbidden)|invalid token|authentication failed", "severity": "medium", "threshold": 10, "window_sec": 60},
+    {"name": "slow-query", "pattern": "slow query|duration[=:]\\s*[1-9]\\d{3,}\\s*ms", "severity": "medium", "threshold": 3, "window_sec": 60},
+    {"name": "port-in-use", "pattern": "EADDRINUSE|address already in use", "severity": "critical", "threshold": 1, "window_sec": 60}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "_comment": "Project profile for logwatch.py --config. Copy to logwatch.local.json and adapt (the log-watcher skill generates this for you).",
+  "sources": ["logs/*.log", "tmp/*.log"],
+  "cmd": null,
+  "level": null,
+  "exclude": ["GET /health", "GET /metrics"],
+  "rules_file": "devkit/config/logwatch.rules.json",
+  "rules": [
+    {"name": "payment-declined-spike", "pattern": "payment_declined", "severity": "high", "threshold": 5, "window_sec": 60}
+  ]
+}

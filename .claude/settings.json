@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 devkit/tools/scaffold.py:*)",
+      "Bash(python3 devkit/tools/tracker.py:*)",
+      "Bash(python3 devkit/tools/bench.py:*)",
+      "Bash(python3 devkit/tools/logwatch.py:*)",
+      "Bash(python3 -m unittest:*)",
+      "Bash(python3 -m json.tool:*)",
+      "Bash(python3 devkit/tools/adr.py:*)",
+      "Bash(python3 devkit/tools/doclint.py:*)",
+      "Bash(python3 devkit/tools/review.py:*)",
+      "Bash(devkit:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/devkit/hooks/guard_generated.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/devkit/hooks/lint_doc.py"
+          }
+        ]
+      }
+    ]
+  }
+}

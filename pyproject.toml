@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "devkit-cli"
+dynamic = ["version"]
+description = "Requirement-to-delivery dev kit for Claude Code: skills, agents, rules, ADRs, templates, tracker, benchmarks, log watcher"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Rajath Navada" }]
+dependencies = []
+classifiers = ["Programming Language :: Python :: 3", "Environment :: Console", "Topic :: Software Development"]
+
+[project.urls]
+Homepage = "https://github.com/rajathnavda1729/devsupport"
+Issues = "https://github.com/rajathnavda1729/devsupport/issues"
+
+[project.scripts]
+devkit = "devkit_cli.cli:main"
+
+[tool.hatch.version]
+path = "src/devkit_cli/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/devkit_cli"]
+exclude = ["**/__pycache__", "**/*.pyc"]
+
+# Bundle the kit assets inside the package so `devkit install` works from any machine.
+[tool.hatch.build.targets.wheel.force-include]
+".claude/skills" = "devkit_cli/kit/.claude/skills"
+".claude/agents" = "devkit_cli/kit/.claude/agents"
+".claude/rules" = "devkit_cli/kit/.claude/rules"
+".claude/settings.json" = "devkit_cli/kit/.claude/settings.json"
+"devkit/tools" = "devkit_cli/kit/devkit/tools"
+"devkit/hooks" = "devkit_cli/kit/devkit/hooks"
+"devkit/templates" = "devkit_cli/kit/devkit/templates"
+"devkit/knowledge" = "devkit_cli/kit/devkit/knowledge"
+"devkit/config" = "devkit_cli/kit/devkit/config"
+"README.md" = "devkit_cli/kit/README.md"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", ".claude/skills", ".claude/agents", ".claude/rules", ".claude/settings.json", "devkit", "README.md", "tests", "bin", "install.sh"]
+exclude = ["**/__pycache__", "**/*.pyc", "devkit/config/logwatch.local.json"]
