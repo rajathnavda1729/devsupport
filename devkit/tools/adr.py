@@ -27,7 +27,7 @@ import re
 import sys
 from pathlib import Path
 
-from devkit_common import (ADR_CONF, DOCS, TEMPLATES_DIR, all_features, decisions_dir, die, doc_marker,
+from devkit_common import (ADR_CONF, CONFIG_NAME, DOCS, TEMPLATES_DIR, all_features, decisions_dir, die, doc_marker,
                            load_project_config, project_root, read_marker, resolve_feature,
                            save_project_config, today, write_atomic)
 
@@ -161,7 +161,9 @@ def adr_dirs(root: Path, workspaces: dict[str, Path]) -> list[Path]:
             dirs.append(ws / sub)
     kit = (root / "devkit").resolve()
     for cur, subdirs, _ in os.walk(root):
-        subdirs[:] = [d for d in subdirs if d not in SKIP_DIRS and (Path(cur) / d).resolve() != kit]
+        # skip vendored/generated dirs, the kit itself, and nested projects (their own .devkit.json)
+        subdirs[:] = [d for d in subdirs if d not in SKIP_DIRS and (Path(cur) / d).resolve() != kit
+                      and not (Path(cur) / d / CONFIG_NAME).exists()]
         for d in subdirs:
             if d.lower() in ADR_DIR_NAMES:
                 dirs.append(Path(cur) / d)

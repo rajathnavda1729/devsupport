@@ -1,0 +1,7 @@
+{
+  "specs_dir": "specs",
+  "features": {
+    "leaderboard": "services/leaderboard/specs/leaderboard"
+  },
+  "decisions_dir": "docs/adr"
+}

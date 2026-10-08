@@ -101,6 +101,14 @@ class AdrTest(ToolTestCase):
         self.assertEqual(adrs[4]["status"], "Proposed")
         self.assertEqual(adrs[1]["title"], "Record architecture decisions")
 
+    def test_nested_projects_are_not_scanned(self):
+        nested = self.cwd / "examples" / "demo"
+        (nested / "docs" / "adr").mkdir(parents=True)
+        (nested / ".devkit.json").write_text("{}")
+        (nested / "docs" / "adr" / "0001-nested.md").write_text(NYGARD)
+        paths = [a["path"] for a in self.registry()]
+        self.assertFalse(any(p.startswith("examples/") for p in paths), paths)
+
     def test_scan_writes_decision_log_in_existing_dir(self):
         self.adr("scan")
         cfg = json.loads((self.cwd / ".devkit.json").read_text())

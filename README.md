@@ -36,6 +36,7 @@ flowchart LR
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Your first feature, step by step](#your-first-feature-step-by-step)
+- [Example: a full run](#example-a-full-run)
 - [Day-to-day commands](#day-to-day-commands)
 - [Troubleshooting](#troubleshooting)
 - [Review before implementing & thorough decisions](#review-before-implementing--thorough-decisions)
@@ -106,6 +107,9 @@ At any point, ask "where are we on payment-retry?" or run `devkit status payment
 > **Approvals are yours.** Claude is instructed never to mark a document *Approved* or an ADR *Accepted* unless you say so. The readiness gate checks for both.
 
 Prefer to run one stage on its own? Every stage is its own skill: `/requirements-breakdown`, `/solutioning`, `/hld`, `/lld`, `/task-breakdown`, `/execution-plan`, `/testing-guide`, `/test-plan`, `/benchmark`, `/log-watcher`, `/adr-discovery`, `/implementation-readiness`.
+
+## Example: a full run
+[`examples/leaderboard/`](examples/leaderboard/WALKTHROUGH.md) takes a **near-realtime leaderboard** from a raw request to an implementation-ready plan. It covers requirements, three rounds of decision challenges (the chosen design changed twice), HLD/LLD, design review, tasks, a schedule that honestly misses the deadline, the test plan, proof-of-concept benchmarks and the readiness gate. Start with the walkthrough.
 
 ## Day-to-day commands
 ```bash

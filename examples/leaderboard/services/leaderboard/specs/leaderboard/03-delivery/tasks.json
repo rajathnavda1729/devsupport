@@ -1,0 +1,653 @@
+{
+  "feature": "leaderboard",
+  "title": "Near-realtime Leaderboards",
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Walking skeleton: leaderboard service, CI, dev deploy, stub GET top",
+      "type": "infra",
+      "priority": "P0",
+      "estimate": "S",
+      "component": "Read API",
+      "phase": "M1-skeleton",
+      "requirements": [
+        "FR-004"
+      ],
+      "acceptance": [
+        "Service deploys to dev from CI",
+        "GET /v1/boards/global/season/top returns 200 with stub body"
+      ],
+      "description": "",
+      "status": "in_progress",
+      "owner": "",
+      "depends_on": [],
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:36:06"
+    },
+    {
+      "id": "T-002",
+      "title": "Spike: Redis capacity at 40M entries (80k ZADD/s + 60k reads/s) and itemised cost",
+      "type": "spike",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Redis",
+      "phase": "M1-skeleton",
+      "requirements": [
+        "NFR-002",
+        "NFR-004",
+        "NFR-010"
+      ],
+      "acceptance": [
+        "p95 ZREVRANK/ZREVRANGE \u2264 5 ms at target load on staging",
+        "single-key CPU \u2264 70 %",
+        "itemised monthly cost for A\u2032 vs B against NFR-010"
+      ],
+      "description": "",
+      "status": "in_progress",
+      "owner": "",
+      "depends_on": [],
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:36:06"
+    },
+    {
+      "id": "T-003",
+      "title": "PostgreSQL schema + migrations: players_lb, scores, score_events (monthly partitions), redis_dirty outbox, ops tables",
+      "type": "infra",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "PostgreSQL",
+      "phase": "M1-skeleton",
+      "depends_on": [],
+      "requirements": [
+        "FR-001",
+        "FR-002",
+        "FR-012"
+      ],
+      "acceptance": [
+        "Migrations apply and roll back cleanly",
+        "score_events unique on (player_id, match_id, completed_month)"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:26:16 Schema work does not need the deployed skeleton (re-plan)"
+      ],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:36:32"
+    },
+    {
+      "id": "T-004",
+      "title": "Ingest consumer batch loop with offset commit after DB commit",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Ingest worker",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-003"
+      ],
+      "requirements": [
+        "FR-001",
+        "NFR-001"
+      ],
+      "acceptance": [
+        "Given a match.completed with delta 25 When consumed Then season and all-time scores increase by 25",
+        "Offsets are committed only after the transaction commits"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-005",
+      "title": "Exactly-once apply via score_events natural key",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Ingest worker",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-004"
+      ],
+      "requirements": [
+        "FR-002"
+      ],
+      "acceptance": [
+        "Given an applied event When redelivered Then scores are unchanged",
+        "Given a producer retry with a new event_id but same match_id Then it is not applied twice"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-006",
+      "title": "Plausibility rules and rejected events",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "S",
+      "component": "Ingest worker",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-005"
+      ],
+      "requirements": [
+        "FR-003"
+      ],
+      "acceptance": [
+        "Given delta 900000 When consumed Then not applied and stored with status rejected and reason"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-007",
+      "title": "Outbox writer + version-guarded redis_writer.lua (ZADD/ZREM per player) + tie-break encoding",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Ingest worker",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-005"
+      ],
+      "requirements": [
+        "FR-007",
+        "NFR-006"
+      ],
+      "acceptance": [
+        "Every batch player, duplicates included, gets an absolute ZADD from PostgreSQL rows",
+        "Property test: encoded order equals (score desc, reached_at asc) for random inputs",
+        "No ZINCRBY in the code base (lint rule)",
+        "Writes apply only if version > stored version (property test with shuffled writes)",
+        "Removal tombstone cannot be overwritten by an older score"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:23:45 Revised after ADR-0006 round-3 challenge"
+      ],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:23:45"
+    },
+    {
+      "id": "T-008",
+      "title": "Read API: top-N with 1 s cache",
+      "type": "feature",
+      "priority": "P1",
+      "estimate": "S",
+      "component": "Read API",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-007"
+      ],
+      "requirements": [
+        "FR-004",
+        "NFR-002"
+      ],
+      "acceptance": [
+        "Given 1000 ranked players When top 100 requested Then 100 entries in rank order"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-009",
+      "title": "Read API: around-me (rank \u00b1 10)",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "S",
+      "component": "Read API",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-007"
+      ],
+      "requirements": [
+        "FR-005"
+      ],
+      "acceptance": [
+        "Given a player ranked 5000 When me requested Then ranks 4990\u20135010 returned with the player marked",
+        "Unranked player gets me = null"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-010",
+      "title": "Regional boards (EU, NA, APAC)",
+      "type": "feature",
+      "priority": "P1",
+      "estimate": "S",
+      "component": "Ingest worker",
+      "phase": "M2-core",
+      "depends_on": [
+        "T-007"
+      ],
+      "requirements": [
+        "FR-008"
+      ],
+      "acceptance": [
+        "Given an EU player When their score changes Then global and EU boards change, NA/APAC do not"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-011",
+      "title": "Ingest throughput + end-to-end freshness test (20k/s sustained, 40k/s burst)",
+      "type": "test",
+      "priority": "P0",
+      "estimate": "S",
+      "component": "Ingest worker",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-005",
+        "T-007"
+      ],
+      "requirements": [
+        "NFR-003",
+        "NFR-001"
+      ],
+      "acceptance": [
+        "20k events/s for 1 h with lag \u2264 2 s p95",
+        "40k events/s burst 5 min recovers within 1 min"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-012",
+      "title": "Stale flag from outbox age, failover replay (last 15 min), hourly safety-net reconcile",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Jobs",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-007"
+      ],
+      "requirements": [
+        "NFR-006"
+      ],
+      "acceptance": [
+        "Failed ZADD is re-asserted within 10 s",
+        "Reconcile reports 0 diffs on a clean board",
+        "Reads carry stale=true when watermark > 60 s",
+        "stale=true when the oldest dirty row > 60 s",
+        "After a simulated failover, Redis matches PostgreSQL within 60 s"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:23:45 Repair queue replaced by outbox (ADR-0006)"
+      ],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:23:45"
+    },
+    {
+      "id": "T-013",
+      "title": "Rebuild tool: shadow key + verify + atomic RENAME",
+      "type": "feature",
+      "priority": "P1",
+      "estimate": "M",
+      "component": "Jobs",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-012"
+      ],
+      "requirements": [
+        "FR-013",
+        "NFR-007"
+      ],
+      "acceptance": [
+        "40M-entry board rebuilt in \u2264 30 min with reads uninterrupted",
+        "Writes during rebuild are not lost (replayed from watermark)"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-014",
+      "title": "Season rollover + snapshot (PostgreSQL cut-off, SHA-256, S3 Object Lock, season.closed)",
+      "type": "feature",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Jobs",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-005"
+      ],
+      "requirements": [
+        "FR-009",
+        "FR-010"
+      ],
+      "acceptance": [
+        "Snapshot equals PostgreSQL board at cut-off, checksum stored, object immutable",
+        "Events completed after 00:00 UTC count toward the new season"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-015",
+      "title": "Ops API: remove/restore player with audit",
+      "type": "feature",
+      "priority": "P1",
+      "estimate": "M",
+      "component": "Ops API",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-012"
+      ],
+      "requirements": [
+        "FR-011",
+        "NFR-008"
+      ],
+      "acceptance": [
+        "Removed player disappears from all boards \u2264 5 min",
+        "In-flight batches cannot re-add a removed player",
+        "Action audited with operator and reason; ops role required"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-016",
+      "title": "Score history API for operators",
+      "type": "feature",
+      "priority": "P2",
+      "estimate": "S",
+      "component": "Ops API",
+      "phase": "M5-post-launch",
+      "depends_on": [
+        "T-005"
+      ],
+      "requirements": [
+        "FR-012"
+      ],
+      "acceptance": [
+        "Applied and rejected events listed newest first with reason"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:26:16 Deferred to post-launch (re-plan; Should/Could scope)"
+      ],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:26:16"
+    },
+    {
+      "id": "T-017",
+      "title": "Friends board with profile client, 5 min cache and circuit breaker",
+      "type": "feature",
+      "priority": "P2",
+      "estimate": "M",
+      "component": "Read API",
+      "phase": "M5-post-launch",
+      "depends_on": [
+        "T-009"
+      ],
+      "requirements": [
+        "FR-006"
+      ],
+      "acceptance": [
+        "Given 30 friends Then 31 players ranked 1\u201331",
+        "Profile timeout returns degraded=true from cache"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:26:16 Deferred to post-launch (re-plan; Should/Could scope)"
+      ],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:26:16"
+    },
+    {
+      "id": "T-018",
+      "title": "Privacy: anonymous display for opted-out players",
+      "type": "feature",
+      "priority": "P3",
+      "estimate": "S",
+      "component": "Read API",
+      "phase": "M5-post-launch",
+      "depends_on": [
+        "T-008"
+      ],
+      "requirements": [
+        "FR-014",
+        "NFR-009"
+      ],
+      "acceptance": [
+        "Opted-out players shown as Anonymous; contract test asserts no PII fields"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:26:16 Deferred to post-launch (re-plan; Should/Could scope)"
+      ],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:26:16"
+    },
+    {
+      "id": "T-019",
+      "title": "Observability: consumer lag, outbox oldest age, reconcile drift, alerts, dashboards",
+      "type": "infra",
+      "priority": "P1",
+      "estimate": "S",
+      "component": "Ingest worker",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-004"
+      ],
+      "requirements": [
+        "NFR-011",
+        "NFR-005"
+      ],
+      "acceptance": [
+        "Alert fires when lag > 5 s for 1 min"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:26:56"
+    },
+    {
+      "id": "T-020",
+      "title": "Chaos tests: crash between commit and Redis write, zombie consumer replay",
+      "type": "test",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Ingest worker",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-012"
+      ],
+      "requirements": [
+        "NFR-006",
+        "FR-002"
+      ],
+      "acceptance": [
+        "After each fault Redis equals PostgreSQL within 60 s; no rank ever wrong vs PostgreSQL at the same watermark"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:23:45"
+    },
+    {
+      "id": "T-021",
+      "title": "Snapshot verification and rollover drill",
+      "type": "test",
+      "priority": "P0",
+      "estimate": "S",
+      "component": "Jobs",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-014"
+      ],
+      "requirements": [
+        "FR-010"
+      ],
+      "acceptance": [
+        "Tampered snapshot detected by checksum",
+        "Drill completes before Monday 00:15 UTC"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-022",
+      "title": "CI gates: bench.py SLOs and logwatch --fail-on ERROR on the integration run",
+      "type": "chore",
+      "priority": "P2",
+      "estimate": "S",
+      "component": "Read API",
+      "phase": "M4-release",
+      "depends_on": [
+        "T-009",
+        "T-011"
+      ],
+      "requirements": [
+        "NFR-002"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "acceptance": [],
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:16:46"
+    },
+    {
+      "id": "T-023",
+      "title": "Rollout: feature flag, canary 1/10/50/100 %, runbook",
+      "type": "chore",
+      "priority": "P1",
+      "estimate": "S",
+      "component": "Read API",
+      "phase": "M4-release",
+      "depends_on": [
+        "T-019",
+        "T-020",
+        "T-024"
+      ],
+      "requirements": [
+        "NFR-005"
+      ],
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "acceptance": [],
+      "notes": [],
+      "created": "2026-10-08T08:16:46",
+      "updated": "2026-10-08T08:24:01"
+    },
+    {
+      "title": "Chaos suite: offset-committed-then-crash, lost Redis acks, removal racing a batch",
+      "type": "test",
+      "priority": "P0",
+      "estimate": "M",
+      "component": "Jobs",
+      "phase": "M3-hardening",
+      "depends_on": [
+        "T-012"
+      ],
+      "requirements": [
+        "NFR-006",
+        "FR-011"
+      ],
+      "acceptance": [
+        "Each fault: zero rank mismatches vs PostgreSQL within 60 s"
+      ],
+      "id": "T-024",
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [
+        "2026-10-08T08:26:16 Rebuild-under-ingest split to T-025 (re-plan)"
+      ],
+      "created": "2026-10-08T08:23:45",
+      "updated": "2026-10-08T08:26:16"
+    },
+    {
+      "title": "Chaos: rebuild under live ingest (shadow key + replay + RENAME)",
+      "type": "test",
+      "priority": "P1",
+      "estimate": "S",
+      "component": "Jobs",
+      "phase": "M4-release",
+      "depends_on": [
+        "T-013"
+      ],
+      "requirements": [
+        "NFR-007",
+        "NFR-006"
+      ],
+      "acceptance": [
+        "Zero mismatches after rebuild under 20k events/s"
+      ],
+      "id": "T-025",
+      "description": "",
+      "status": "todo",
+      "owner": "",
+      "notes": [],
+      "created": "2026-10-08T08:26:16",
+      "updated": "2026-10-08T08:26:16"
+    }
+  ],
+  "updated": "2026-10-08T08:36:32"
+}
