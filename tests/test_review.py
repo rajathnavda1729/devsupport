@@ -129,11 +129,28 @@ class MatrixTest(ReviewTestBase):
         self.write_solutioning(a=(4, 3, 3), b=(4, 3, 3.5), recommendation="We choose Option B.", poc_result="B p95 120 ms ✅")
         self.assertEqual(self.matrix().returncode, 0)
 
+    def test_close_call_with_unmeasured_experiment_needs_fallback(self):
+        self.write_solutioning(a=(4, 3, 3), b=(4, 3, 3.5), recommendation="We choose Option B.", poc_result="B p95 120 ms ✅")
+        sol = self.doc("02-design/solutioning.md")
+        rows = "| retry latency | A, B | bench.py cmd | p95 | ≤ 200 ms | B p95 120 ms ✅ |"
+        sol.write_text(sol.read_text().replace(rows, rows + "\n| full load | B | staging | p95 | ≤ 50 ms | not run — needs staging |"))
+        self.assertIn("depends on unmeasured experiment(s): full load", self.matrix().stdout)
+        sol.write_text(sol.read_text().replace("We choose Option B.", "We choose Option B.\n**Fallback:** switch to A if staging fails."))
+        self.assertEqual(self.matrix().returncode, 0)
+
     def test_sensitivity_flip_detected(self):
         # A wins on latency only; B wins the rest. Shifting latency weight flips the winner.
         self.write_solutioning(a=(5, 2, 2), b=(2, 5, 5))
         out = self.matrix().stdout
         self.assertIn("FRAGILE", out)
+
+    def test_decisive_scores_reported(self):
+        self.write_solutioning(a=(4, 3, 3), b=(4, 3, 3.5), recommendation="We choose Option B.", poc_result="B ok")
+        out = self.matrix().stdout
+        self.assertIn("decisive score", out)
+        self.assertIn("Option B 'Cost' 3.5→2.5", out)
+        self.write_solutioning()  # clear winner: A 5,4,4 vs B 3,3,3
+        self.assertIn("score sensitivity (±1 per cell): robust", self.matrix().stdout)
 
     def test_override_is_accepted_explicitly(self):
         self.write_solutioning(a=(5, 4, 4), b=(3, 3, 3),
@@ -154,6 +171,18 @@ class DecisionTest(ReviewTestBase):
         self.assertEqual(p.returncode, 1)
         for gap in ("'Context' is empty", "at least 2 required", "Evaluation 'Pre-mortem'", "no negative"):
             self.assertIn(gap, p.stdout)
+
+    def test_placeholder_and_multiline_values(self):
+        path = self.make_adr(accept=False)
+        text = open(path).read()
+        text = text.replace("- **Challenge:** \"fixed delay is simpler\" — rejected, causes synchronized retries",
+                            "- **Challenge:** pending the challenger review")
+        text = text.replace("- **Comparison:** see ../solutioning.md §6 (A 4.3 vs B 3.1)",
+                            "- **Comparison:**\n  - Option 1 wins on latency\n  - Option 2 loses on cost")
+        open(path, "w").write(text)
+        out = self.run_tool("review.py", "decision", "1", check=False).stdout
+        self.assertIn("Evaluation 'Challenge' is a placeholder", out)
+        self.assertNotIn("'Comparison'", out)  # continuation lines count as content
 
     def test_evaluated_adr_passes(self):
         self.make_adr()
@@ -190,12 +219,30 @@ class ReadinessGateTest(ReviewTestBase):
         self.assertEqual(p.returncode, 0, p.stdout)
         self.run_tool("tracker.py", "-f", "pay", "start", "T-001")
 
+    def test_rejected_decision_does_not_block(self):
+        self.make_ready()
+        self.run_tool("adr.py", "new", "--feature", "pay", "--title", "Rejected alternative")
+        self.run_tool("adr.py", "set-status", "2", "rejected")
+        p = self.run_tool("review.py", "readiness", "pay", check=False)
+        self.assertEqual(p.returncode, 0, p.stdout)
+
     def test_unaccepted_decision_blocks(self):
         self.make_ready()
         self.run_tool("adr.py", "set-status", "1", "proposed")
         p = self.run_tool("review.py", "readiness", "pay", check=False)
         self.assertEqual(p.returncode, 1)
         self.assertIn("is Proposed — the user must accept it", p.stdout)
+
+    def test_blocking_open_question_blocks(self):
+        self.make_ready()
+        req = self.doc("01-requirements/requirements.md")
+        t = req.read_text()
+        header = "|---|----------|-----------|----------|--------|\n"
+        req.write_text(t.replace(header, header + "| Q1 | Are rewards paid from the board? | Yes | Live Ops | Open |\n"
+                                         "| Q2 | Nice to have colours? | No | UX | Open |\n", 1))
+        out = self.run_tool("review.py", "readiness", "pay", check=False).stdout
+        self.assertIn("blocking question Q1 unanswered", out)
+        self.assertNotIn("Q2", out)
 
     def test_unresolved_blocking_finding_blocks(self):
         self.make_ready()

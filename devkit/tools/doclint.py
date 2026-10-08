@@ -24,7 +24,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -84,6 +87,32 @@ def table_headers(body: str) -> list[tuple[str, ...]]:
 
 def mermaid_blocks(body: str) -> list[str]:
     return re.findall(r"```mermaid\s*\n(.*?)```", body, flags=re.S)
+
+
+RENDER = False
+MMDC = shutil.which("mmdc")
+
+
+def mermaid_static_problems(kind: str, block: str) -> list[str]:
+    """Cheap checks for syntax traps that otherwise only show up when the diagram is rendered."""
+    problems = []
+    if kind.startswith("sequenceDiagram"):
+        for ln in block.splitlines():
+            m = re.match(r"\s*\S+\s*-[->x)]+\+?-?\s*\S+?\s*:(.*)$", ln) or re.match(r"\s*Note\s+\w+.*?:(.*)$", ln)
+            if m and ";" in m.group(1):
+                problems.append(f"sequence message contains ';' (a statement separator in mermaid): '{ln.strip()[:60]}'")
+    return problems
+
+
+def render_check(block: str) -> str | None:
+    with tempfile.TemporaryDirectory() as d:
+        src, out = Path(d) / "d.mmd", Path(d) / "d.svg"
+        src.write_text(block, encoding="utf-8")
+        p = subprocess.run([MMDC, "-q", "-i", str(src), "-o", str(out)], capture_output=True, text=True, timeout=120)
+        if p.returncode == 0:
+            return None
+        msg = next((ln for ln in (p.stderr + p.stdout).splitlines() if "rror" in ln), "render failed")
+        return msg.strip()[:160]
 
 
 @lru_cache(maxsize=None)
@@ -165,6 +194,11 @@ def lint_file(path: Path) -> tuple[list[str], list[str]]:
             first = next((ln.strip() for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("%%")), "")
             if not first.startswith(MERMAID_TYPES):
                 errors.append(f"§ '{title}': mermaid block does not start with a diagram type (got '{first[:30]}')")
+            errors += [f"§ '{title}': {e}" for e in mermaid_static_problems(first, block)]
+            if RENDER and MMDC:
+                err = render_check(block)
+                if err:
+                    errors.append(f"§ '{title}': mermaid does not render — {err}")
     if todo_sections:
         msg = "unresolved TODO in: " + "; ".join(todo_sections)
         (errors if status in FINAL_STATUSES else warnings).append(msg + (f" (not allowed in status {status})"
@@ -193,7 +227,13 @@ def main(argv=None) -> int:
     p.add_argument("--feature", "-f", help="lint one feature workspace")
     p.add_argument("--strict", action="store_true", help="treat warnings as errors")
     p.add_argument("--quiet", "-q", action="store_true", help="only print problems")
+    p.add_argument("--render", action="store_true",
+                   help="also render every mermaid block with mmdc (mermaid-cli) to catch syntax errors")
     a = p.parse_args(argv)
+    global RENDER
+    RENDER = a.render
+    if a.render and not MMDC:
+        print("WARN  --render needs mermaid-cli on PATH (npm i -g @mermaid-js/mermaid-cli); static checks only")
     files = collect(a)
     total_e = total_w = 0
     for f in files:

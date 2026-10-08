@@ -28,6 +28,13 @@ class BenchUnitTest(unittest.TestCase):
         self.assertEqual(bench.percentile(vals, 0), 1)
         self.assertEqual(bench.percentile(vals, 1), 10)
 
+    def test_placeholders_vary_per_request(self):
+        a = bench.render_placeholders('{"id":"{uuid}","n":{seq},"p":"p{randint:5:5}"}', 7)
+        b = bench.render_placeholders('{"id":"{uuid}","n":{seq},"p":"p{randint:5:5}"}', 8)
+        self.assertIn('"n":7', a)
+        self.assertIn('"p":"p5"', a)
+        self.assertNotEqual(json.loads(a)["id"], json.loads(b)["id"])
+
     def test_summarize_error_rate(self):
         s = bench.summarize([10.0, 20.0, 30.0], errors=1, wall_s=1.0)
         self.assertEqual(s["count"], 4)
@@ -89,7 +96,10 @@ class BenchCliTest(ToolTestCase):
     def test_report_lists_all(self):
         a, b = self._result("optA", p95_ms=15), self._result("optB", p95_ms=25)
         out = self.run_tool("bench.py", "report", a, b, "--out", self.cwd / "R.md").stdout
-        self.assertIn("**Fastest p95:** optA", out)
+        self.assertNotIn("Per-scenario", out)  # different scenarios are never ranked against each other
+        c, d = self._result("optA-read", p95_ms=15), self._result("optB-read", p95_ms=9)
+        out = self.run_tool("bench.py", "report", a, b, c, d).stdout
+        self.assertIn("| read | optB-read | 9 | optA-read 15 ms |", out)
 
 
 if __name__ == "__main__":

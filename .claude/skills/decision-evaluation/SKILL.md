@@ -13,7 +13,7 @@ A decision counts as **thoroughly evaluated** only when all of the following are
 | 1 | Drivers: the requirements and ADRs that matter, weighted to sum to 100 | solutioning §2, §6 | `devkit review matrix` |
 | 2 | ≥2 genuinely different options, including the simplest viable one | solutioning §5, ADR *Considered options* | matrix, `review decision` |
 | 3 | Scores 1–5 per criterion, with weighted totals | solutioning §6 | matrix |
-| 4 | Sensitivity: the winner survives ±20% on each weight | `devkit review matrix` output | matrix |
+| 4 | Sensitivity: the winner survives ±20% on each weight, and every **decisive score** (a ±1 change flips the winner) is backed by cited evidence | `devkit review matrix` output | matrix |
 | 5 | Evidence for close calls (<10% margin) or fragile winners: a PoC benchmark result, or an explicit `**Override:**` with its reason | solutioning §8 / §9 | matrix |
 | 6 | At least one rejected pattern or alternative, with the reason | solutioning §4 | matrix |
 | 7 | Trade-offs accepted (negative consequences) | ADR *Consequences* | `review decision` |
@@ -31,12 +31,18 @@ A decision counts as **thoroughly evaluated** only when all of the following are
    - **Margin under 10%, or "FRAGILE":** do not pick by gut feel. Get evidence: run a PoC with the `benchmark` skill and put the result in §8.
    - **Evidence impossible to get:** write `**Override:** <reason>` in §9 and flag it to the user.
    - **Recommending the non-winner:** this always needs an `**Override:**` line.
+   - **Close call that still depends on a "not run" experiment:** write `**Fallback:** <what we do if it fails>` in §9, and make the experiment an early task with a gate.
 3. **Classify reversibility.**
    - A **one-way door** is something like a data store, a public API contract, a vendor lock-in or a data model. It requires the PoC evidence or a strong external benchmark, a full pre-mortem, and the `decision-challenger` review.
    - A **two-way door** can be lighter, but still needs the elements listed above.
 4. **Challenge it.** Delegate to the `decision-challenger` agent, with the slug and the ADR path.
    - Address each serious objection: change the decision, add a mitigation, or record why it is accepted.
    - Put the strongest objection and your response into the ADR's *Challenge* line.
+   **When to stop challenging (convergence rule):**
+   - **RECONSIDER:** revise the option or the ADR (often by adopting the steelman), re-score, and challenge again.
+   - **SOUND, or SOUND WITH MITIGATIONS:** stop, once every High or Critical objection has a recorded response: a design change, a task with a gate, or a risk the user explicitly accepts.
+   - **After 3 rounds without convergence:** stop and escalate to the user with the competing options and the open objections. Don't keep looping.
+   - **When a round changes the chosen option:** record the outgoing ADR as Rejected, with its challenge, rather than rewriting it into the new decision.
 5. **Write the ADR's Evaluation section:** comparison, sensitivity, evidence quality, reversibility, pre-mortem and challenge. Then run `devkit review decision <ADR>` until it passes.
 6. **Ask the user to accept.** Present the decision, the margin, the sensitivity result, the evidence and the main risk in about five lines. Only the user moves the ADR to Accepted: `devkit adr set-status <n> accepted`.
 

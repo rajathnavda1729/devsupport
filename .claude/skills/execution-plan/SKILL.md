@@ -25,6 +25,8 @@ argument-hint: "<feature-slug> [start-date] [team-size]"
 1. Get the facts. Do not estimate by hand.
    - `python3 devkit/tools/tracker.py -f <slug> waves --json` gives the waves, the critical path and the points.
    - `python3 devkit/tools/tracker.py -f <slug> stats`
+   - `python3 devkit/tools/tracker.py -f <slug> schedule --start <date> --team <n> --focus 0.7 --deadline <date>` assigns tasks to engineers respecting dependencies, gives the finish date and checks the deadline (exit 1 if it is missed). Add `--mermaid` to generate the gantt chart for §4. Do not hand-write task dates.
+   - **If the deadline is missed**, the plan must say so, and propose concrete options: split critical-path tasks, add people to parallel waves, cut Could/Should scope, or move the date. Present them to the user.
 2. **Assumptions.** Ask for, or assume and state, the start date, team size, and velocity. The default is 1 point ≈ 1 ideal day per engineer at 70% focus.
 3. **Milestones.** Group the work by `phase` (M1-skeleton → M2-core → M3-hardening → M4-release). Each milestone gets demonstrable exit criteria.
 4. **Waves.** Within each wave, assign tasks to people so that no one exceeds capacity. Tasks on the critical path get the most experienced owner.

@@ -180,18 +180,28 @@ def load_json(path: Path, default):
 
 
 def parse_requirements(feature_dir: Path) -> dict[str, dict]:
-    """Parse requirement rows from 01-requirements.md.
+    """Parse requirement rows from the requirements document.
 
-    Returns {id: {"critical": bool, "row": str}}. A row is critical when any
-    cell contains the word CRITICAL (case-insensitive).
+    Returns {id: {"critical": bool, "row": str}}. The first row whose first cell
+    is the ID defines the requirement; later rows (e.g. the critical-requirements
+    table) never overwrite it. A requirement is critical when any of its rows
+    contains the word CRITICAL or it is listed in the "Critical requirements" section.
     """
     path = feature_dir / REQUIREMENTS_FILE
     if not path.exists():
         return {}
+    text = path.read_text(encoding="utf-8")
+    crit_section = re.search(r"^##[^\n]*Critical requirements[^\n]*\n(.*?)(?=^##\s|\Z)", text, re.M | re.S | re.I)
+    listed_critical = set(REQ_ROW_RE.findall(crit_section.group(1))) if crit_section else set()
+    listed_critical = {rid for rid, _ in listed_critical}
     reqs: dict[str, dict] = {}
-    for m in REQ_ROW_RE.finditer(path.read_text(encoding="utf-8")):
+    for m in REQ_ROW_RE.finditer(text):
         rid, rest = m.group(1), m.group(2)
-        reqs[rid] = {"critical": bool(re.search(r"\bcritical\b", rest, re.I)), "row": rest.strip()}
+        crit = bool(re.search(r"\bcritical\b", rest, re.I)) or rid in listed_critical
+        if rid in reqs:
+            reqs[rid]["critical"] |= crit
+        else:
+            reqs[rid] = {"critical": crit, "row": rest.strip()}
     return reqs
 
 

@@ -123,6 +123,10 @@ class AdrTest(ToolTestCase):
         self.assertIn("# ADR-0005: Adopt OpenTelemetry", text)
         self.assertIn("**Status:** Proposed", text)
 
+    def test_long_titles_cut_at_word_boundary(self):
+        path = self.adr("new", "--title", "Exactly-once scoring via applied-events ledger in the same PostgreSQL transaction").stdout.splitlines()[0]
+        self.assertTrue(path.endswith("0005-exactly-once-scoring-via-applied-events-ledger-in-the-same.md"), path)
+
     def test_retroactive_is_accepted(self):
         path = self.adr("new", "--title", "Monorepo with pnpm", "--retroactive").stdout.splitlines()[0]
         text = open(path).read()
@@ -138,6 +142,15 @@ class AdrTest(ToolTestCase):
         self.assertIn("**Supersedes:** ADR-0004", open(self.cwd / adrs[5]["path"]).read())
         self.adr("supersede", "1", "5")
         self.assertIn("Superseded by ADR-0005", (self.adr_dir / "0001-record-architecture-decisions.md").read_text())
+
+    def test_retitle_only_while_proposed(self):
+        self.adr("new", "--title", "First idea")
+        path = self.adr("retitle", "5", "--title", "Better idea").stdout.strip()
+        self.assertTrue(path.endswith("0005-better-idea.md"), path)
+        self.assertIn("# ADR-0005: Better idea", open(path).read())
+        self.assertFalse((self.adr_dir / "0005-first-idea.md").exists())
+        self.adr("set-status", "5", "accepted")
+        self.assertNotEqual(self.adr("retitle", "5", "--title", "x", check=False).returncode, 0)
 
     def test_set_status_on_devkit_adr(self):
         self.adr("new", "--title", "X")
@@ -166,6 +179,24 @@ class AdrTest(ToolTestCase):
         p = self.adr("check", "pay", check=False)
         self.assertIn("cites ADR-0099, which does not exist", p.stdout)
         self.assertIn("cites superseded ADR-0002 — use ADR-0003", p.stdout)
+
+
+    def test_decisions_applied_must_be_in_force(self):
+        self.run_tool("scaffold.py", "new", "pay", "--text", "x")
+        self.adr("new", "--feature", "pay", "--title", "Use Redis")          # ADR-0005
+        self.adr("new", "--feature", "pay", "--title", "Use PostgreSQL only")  # ADR-0006
+        self.adr("set-status", "5", "rejected")
+        sol = self.cwd / "specs/pay/02-design/solutioning.md"
+        sol.write_text(sol.read_text().replace(
+            "## 10. New decisions (ADRs written for this feature)\n",
+            "## 10. New decisions (ADRs written for this feature)\nADR-0005 rejected, ADR-0006 chosen.\n"))
+        hld = self.cwd / "specs/pay/02-design/hld.md"
+        hld.write_text(hld.read_text().replace(
+            "|-----|----------|-----------------------------------|\n",
+            "|-----|----------|-----------------------------------|\n| ADR-0005 | Redis | read path |\n", 1))
+        out = self.adr("check", "pay", check=False).stdout
+        self.assertIn("applies rejected ADR-0005", out)
+        self.assertIn("does not apply ADR-0006", out)
 
 
 class AdrEmptyRepoTest(ToolTestCase):

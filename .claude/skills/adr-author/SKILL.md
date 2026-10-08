@@ -42,8 +42,9 @@ Numbers are unique across the whole repo. File naming follows the existing ADRs 
 4. **Link it into the feature documents:**
    - solutioning §10, *New decisions*;
    - HLD §2 or LLD §13, *Decisions applied*.
-5. **Change its status** only when the user decides: `adr.py set-status <n> accepted` (or `rejected` / `deprecated`). Superseding happens automatically through `--supersedes`, or explicitly with `adr.py supersede <old> <new>`.
-6. **Validate:**
+5. **If the content changes materially while the ADR is still Proposed** (for example after a challenge round), keep the title truthful: `adr.py retitle <n> --title "…"`. Once Accepted, the title is frozen.
+6. **Change its status** only when the user decides: `adr.py set-status <n> accepted` (or `rejected` / `deprecated`). Superseding happens automatically through `--supersedes`, or explicitly with `adr.py supersede <old> <new>`.
+7. **Validate:**
    - `python3 devkit/tools/doclint.py <adr file>`
    - `python3 devkit/tools/adr.py check <slug>` (for feature work)
    - `python3 devkit/tools/review.py decision <n>`. It must pass before you ask the user to accept.

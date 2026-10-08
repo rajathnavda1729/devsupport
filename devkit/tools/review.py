@@ -32,6 +32,30 @@ SENSITIVITY_DELTA = 0.20
 EVAL_LABELS = ("Comparison", "Sensitivity", "Evidence quality", "Reversibility", "Pre-mortem", "Challenge")
 ADR_REQUIRED_SECTIONS = ("Context", "Decision drivers", "Considered options", "Decision", "Consequences",
                          "Compliance & evidence", "Revisit when")
+PLACEHOLDER_RE = re.compile(r"^\W*(pending|tbd|todo|to do|later|n/?a|-|\?|unknown|fill me|xxx)\b", re.I)
+
+
+def label_value(body: str, label: str) -> str:
+    """Text of a `- **Label:** …` bullet, including indented continuation lines below it."""
+    m = re.search(rf"^[ \t]*[-*][ \t]*\*\*{re.escape(label)}[^*]*:\*\*[ \t]*(.*)$", body, re.M)
+    if not m:
+        return ""
+    parts = [m.group(1).strip()]
+    for line in body[m.end():].splitlines()[1:]:
+        if re.match(r"^[-*][ \t]*\*\*", line) or (line.strip() and not line.startswith((" ", "\t"))):
+            break
+        parts.append(line.strip())
+    return " ".join(p for p in parts if p).strip()
+
+
+def is_placeholder(value: str, retro: bool) -> bool:
+    if not value:
+        return True
+    if retro and re.search(r"not recorded", value, re.I):
+        return False
+    return bool(PLACEHOLDER_RE.match(value))
+
+
 DONE_WORDS = re.compile(r"^(yes|y|done|resolved|fixed|✅|✔|✓)", re.I)
 
 
@@ -87,7 +111,7 @@ def evaluate_matrix(ws: Path) -> dict:
     """Errors/warnings plus computed facts for the solutioning comparison."""
     sol_path = ws / DOCS["solutioning"]["path"]
     res = {"errors": [], "warnings": [], "winner": None, "margin_pct": None, "flips": [], "totals": {},
-           "recommended": None}
+           "recommended": None, "decisive": []}
     if not sol_path.exists():
         res["errors"].append("solutioning document missing")
         return res
@@ -126,6 +150,22 @@ def evaluate_matrix(ws: Path) -> dict:
             if top != winner:
                 res["flips"].append(f"'{name}' weight ×{factor:g} → {top} wins")
 
+    # Score sensitivity: single cells whose ±1 change flips the winner. Weights can be robust while a
+    # wrong score decides everything, so these cells must each be backed by evidence.
+    for i, (name, _, scores) in enumerate(criteria):
+        for o in scored:
+            for step in (-1, 1):
+                v = scores[o] + step
+                if not 1 <= v <= 5:
+                    continue
+                trial = [(n, w, {**sc, o: v} if j == i else sc) for j, (n, w, sc) in enumerate(criteria)]
+                t = totals(scored, trial)
+                if max(t, key=t.get) != winner:
+                    res["decisive"].append(f"{o} '{name}' {scores[o]:g}→{v:g}")
+    if res["decisive"]:
+        res["warnings"].append("decisive scores (a ±1 change flips the winner) — each needs cited evidence in §5/§8: "
+                               + "; ".join(res["decisive"]))
+
     rec = strip(adrlib.section(text, "9. Recommendation"))
     m = re.search(r"\bOption\s+([A-Z])\b", rec)
     override = "**Override:**" in rec
@@ -139,6 +179,14 @@ def evaluate_matrix(ws: Path) -> dict:
     poc = [r for r in table_rows(adrlib.section(text, "8. Proof-of-concept benchmark"))
            if r and r[-1] and not re.match(r"^(not run|-|tbd|n/?a)?$", strip(r[-1]), re.I)]
     fragile = margin < CLOSE_CALL_PCT or res["flips"]
+    unmeasured = [r[0] for r in table_rows(adrlib.section(text, "8. Proof-of-concept benchmark"))
+                  if r and re.match(r"^not run", strip(r[-1]), re.I)]
+    fallback = "**Fallback:**" in rec
+    if fragile and unmeasured and not (override or fallback):
+        res["errors"].append(f"close call still depends on unmeasured experiment(s): {', '.join(unmeasured)} — state a "
+                             "'**Fallback:** <what we do if it fails>' (or '**Override:**') in §9")
+    elif unmeasured:
+        res["warnings"].append(f"unmeasured experiment(s) in §8: {', '.join(unmeasured)}")
     if fragile and not poc and not override:
         why = f"margin {margin:.1f}% < {CLOSE_CALL_PCT:g}%" if margin < CLOSE_CALL_PCT else "winner flips under ±20% weights"
         res["errors"].append(f"close call ({why}) without evidence — add a PoC benchmark result to §8 "
@@ -171,19 +219,17 @@ def evaluate_adr(path: Path) -> tuple[list[str], list[str]]:
     n_opts = len(re.findall(r"^\s*(?:\d+[.)]|[-*])\s+\S", opts, re.M))
     if not retro and n_opts < 2:
         errors.append(f"'Considered options' lists {n_opts} option(s); at least 2 required")
-    neg = re.search(r"\*\*Negative[^*]*\*\*[ \t]*(.*)", strip(adrlib.section(text, "Consequences")))
-    if not neg or not neg.group(1).strip():
+    if is_placeholder(label_value(strip(adrlib.section(text, "Consequences")), "Negative"), False):
         errors.append("'Consequences' has no negative / accepted trade-off — every real decision costs something")
     ev = strip(adrlib.section(text, "Evaluation"))
     for label in EVAL_LABELS:
-        m = re.search(rf"\*\*{re.escape(label)}:\*\*[ \t]*(.*)", ev)
-        if not m or not m.group(1).strip():
+        value = label_value(ev, label)
+        if not value:
             errors.append(f"Evaluation '{label}' is not filled in")
-    rev = re.search(r"\*\*Reversibility:\*\*[ \t]*(.*)", ev)
-    if rev and re.search(r"one-way", rev.group(1), re.I):
-        pm = re.search(r"\*\*Pre-mortem:\*\*[ \t]*(.*)", ev)
-        if pm and len(pm.group(1)) < 40:
-            warnings.append("one-way-door decision with a thin pre-mortem — expand failure reasons and mitigations")
+        elif is_placeholder(value, retro):
+            errors.append(f"Evaluation '{label}' is a placeholder ('{value[:40]}') — complete it before acceptance")
+    if re.search(r"one-way", label_value(ev, "Reversibility"), re.I) and len(label_value(ev, "Pre-mortem")) < 80:
+        warnings.append("one-way-door decision with a thin pre-mortem — expand failure reasons and mitigations")
     if not strip(adrlib.section(text, "Related")):
         warnings.append("'Related' is empty — link requirements and related ADRs")
     return errors, warnings
@@ -216,6 +262,16 @@ def readiness(ws: Path) -> list[tuple[str, bool, list[str]]]:
         if status not in ("Review", "Approved"):
             problems.append(f"{DOCS[t]['path']} is {status if state != 'missing' else 'missing'} (needs Review or Approved)")
     checks.append(("Design documents approved", not problems, problems))
+
+    problems = []
+    req = ws / DOCS["requirements"]["path"]
+    if req.exists():
+        questions = strip(adrlib.section(req.read_text(encoding="utf-8"), "10. Open questions"))
+        for row in table_rows(questions):
+            # | # | Question | Blocking? | Asked to | Answer |
+            if len(row) >= 5 and re.match(r"^y(es)?\b", row[2], re.I) and re.match(r"^(open|tbd|pending|-|\?)?$", row[4].strip(), re.I):
+                problems.append(f"blocking question {row[0]} unanswered: {row[1][:70]}")
+    checks.append(("Blocking open questions answered", not problems, problems))
 
     problems = []
     rv = ws / DOCS["design-review"]["path"]
@@ -256,6 +312,8 @@ def readiness(ws: Path) -> list[tuple[str, bool, list[str]]]:
             problems.append("no ADR recorded for this feature — significant decisions need ADRs "
                             "(or write 'None — <reason>' in solutioning §10)")
     for x in decisions:
+        if x["status"] in adrlib.INACTIVE:
+            continue  # rejected/deprecated/superseded ADRs are records, not open decisions
         if x["status"] != "Accepted":
             problems.append(f"{x['id']} '{x['title'][:50]}' is {x['status']} — the user must accept it")
         errs, _ = evaluate_adr(project_root() / x["path"])
@@ -302,7 +360,8 @@ def cmd_matrix(a) -> int:
         print(f"{o:<10} {t:g}{'  ← winner' if o == m['winner'] else ''}")
     if m["winner"]:
         print(f"margin: {m['margin_pct']}% · recommended: {m['recommended'] or '-'}")
-        print("sensitivity (±20% per criterion): " + ("robust" if not m["flips"] else "FRAGILE — " + "; ".join(m["flips"])))
+        print("weight sensitivity (±20% per criterion): " + ("robust" if not m["flips"] else "FRAGILE — " + "; ".join(m["flips"])))
+        print("score sensitivity (±1 per cell): " + ("robust" if not m["decisive"] else f"{len(m['decisive'])} decisive score(s)"))
     for w in m["warnings"]:
         print(f"WARN  {w}")
     for e in m["errors"]:
@@ -317,7 +376,7 @@ def cmd_decision(a) -> int:
         print(f"WARN  {w}")
     for e in errors:
         print(f"ERROR {e}")
-    status_note = "" if x["status"] == "Accepted" else f" (status {x['status']} — not yet accepted)"
+    status_note = {"Accepted": "", "Proposed": " (status Proposed — not yet accepted)"}.get(x["status"], f" (status {x['status']})")
     print(f"{x['id']} {x['title']}: {'thoroughly evaluated' if not errors else f'{len(errors)} gap(s)'}{status_note}")
     return 1 if errors else 0
 

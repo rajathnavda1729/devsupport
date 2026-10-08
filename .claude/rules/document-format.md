@@ -18,6 +18,7 @@ Every devkit document is an instance of a template. Its type is declared on line
   Never add new H2 sections.
 - **Empty sections** say `None` or `N/A — <reason>`. Never delete them.
 - **Status lifecycle** is Draft → Review → Approved (ADRs: Proposed → Accepted / Rejected / Deprecated / Superseded). A document in Review or Approved has no TODO markers.
+- **Approved documents and Accepted ADRs** are frozen. Editing one triggers a confirmation prompt (guard hook). After the change, set the document back to `Review` and re-request approval. An Accepted ADR's decision never changes: write a superseding ADR instead.
 - **Generated documents** (`TASKS.md`, `traceability.md`, the workspace `README.md`, `decision-log.md`) are never edited by hand.
 - **New kinds of documents** need a template and a manifest entry first (`kit-forge` skill).
 

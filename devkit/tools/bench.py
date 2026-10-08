@@ -10,16 +10,20 @@ Examples:
   bench.py http --name create-link --url http://localhost:8080/links -X POST \\
                 --data '{"url":"https://example.com"}' -H 'Content-Type: application/json' \\
                 -n 500 -c 20 --slo "p95_ms<=150" --slo "error_rate<=0.01" --out specs/x/benchmarks/create.json
+  bench.py http --name ingest --url http://localhost:8080/events -X POST -c 8 -n 2000 \\
+                --data '{"event_id":"{uuid}","player_id":"p{randint:1:100000}","score_delta":{randint:0:500}}'
   bench.py compare specs/x/benchmarks/baseline.json specs/x/benchmarks/create.json --threshold 10
   bench.py report specs/x/benchmarks/*.json --out specs/x/benchmarks/REPORT.md
 """
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import os
 import platform
+import random
 import re
 import statistics
 import subprocess
@@ -27,6 +31,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -129,9 +134,10 @@ def finish(a, kind: str, config: dict, samples, errors, wall, messages) -> int:
               "config": config, "env": environment(), "stats": stats, "slo": slo,
               "passed": all(s["pass"] for s in slo), "sample_errors": sorted(set(messages))[:10],
               "samples_ms": [round(s, 3) for s in samples]}
+    ms = lambda k: "n/a" if stats[k] is None else f"{stats[k]}ms"
     print(f"{a.name}: n={stats['count']} ok={stats['ok']} err={stats['errors']} "
-          f"p50={stats['p50_ms']}ms p95={stats['p95_ms']}ms p99={stats['p99_ms']}ms "
-          f"mean={stats['mean_ms']}ms rps={stats['throughput_rps']}")
+          f"p50={ms('p50_ms')} p95={ms('p95_ms')} p99={ms('p99_ms')} "
+          f"mean={ms('mean_ms')} rps={stats['throughput_rps']}")
     for s in slo:
         print(f"  SLO {s['slo']:<22} value={s['value']}  {'PASS' if s['pass'] else 'FAIL'}")
     if result["sample_errors"]:
@@ -155,18 +161,39 @@ def cmd_cmd(a) -> int:
     return finish(a, "cmd", config, *run_load(fn, a.n, a.warmup, a.concurrency, a.duration))
 
 
+PLACEHOLDER_RE = re.compile(r"\{(seq|uuid|randint:(-?\d+):(-?\d+))\}")
+
+
+def render_placeholders(text: str | None, n: int) -> str | None:
+    """Per-request values in --url/--data: {seq} 1,2,3…, {uuid} random UUID, {randint:a:b} random int."""
+    if text is None:
+        return None
+
+    def sub(m):
+        if m.group(1) == "seq":
+            return str(n)
+        if m.group(1) == "uuid":
+            return str(uuid.uuid4())
+        return str(random.randint(int(m.group(2)), int(m.group(3))))
+    return PLACEHOLDER_RE.sub(sub, text)
+
+
 def cmd_http(a) -> int:
     headers = {}
     for h in a.header or []:
         k, _, v = h.partition(":")
         headers[k.strip()] = v.strip()
-    body = a.data.encode() if a.data else None
+    body = a.data if a.data else None
     if a.data_file:
-        body = Path(a.data_file).read_bytes()
+        body = Path(a.data_file).read_text(encoding="utf-8")
     expect = set(int(c) for c in a.expect.split(",")) if a.expect else None
+    counter = itertools.count(1)
 
     def fn():
-        req = urllib.request.Request(a.url, data=body, method=a.method, headers=headers)
+        n = next(counter)  # thread-safe in CPython; one value per request
+        url = render_placeholders(a.url, n)
+        data = render_placeholders(body, n).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=a.method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=a.timeout) as resp:
                 resp.read()
@@ -230,10 +257,19 @@ def cmd_report(a) -> int:
             x["slo"] for x in r.get("slo", []) if not x["pass"]) if r.get("slo") else "-")
         lines.append(f"| {r['name']} | {r['kind']} | {s.get('count', '-')} | " + " | ".join(
             str(s.get(c)) for c in cols) + f" | {slo} |")
-    ranked = [r for r in results if r["stats"].get("p95_ms") is not None]
-    if len(ranked) > 1:
-        best = min(ranked, key=lambda r: r["stats"]["p95_ms"])
-        lines += ["", f"**Fastest p95:** {best['name']} ({best['stats']['p95_ms']} ms)"]
+    # Option comparisons follow the naming convention opt<X>-<scenario>: compare like with like.
+    scenarios: dict[str, list[dict]] = {}
+    for r in results:
+        m = re.match(r"^(opt[A-Za-z0-9]+)-(.+)$", r["name"]) if r["stats"].get("p95_ms") is not None else None
+        if m:
+            scenarios.setdefault(m.group(2), []).append(r)
+    compared = {k: v for k, v in scenarios.items() if len(v) > 1}
+    if compared:
+        lines += ["", "### Per-scenario comparison (p95)", "", "| Scenario | Best | p95 ms | Others |", "|---|---|---|---|"]
+        for scen, rs in sorted(compared.items()):
+            rs = sorted(rs, key=lambda r: r["stats"]["p95_ms"])
+            others = ", ".join(f"{r['name']} {r['stats']['p95_ms']} ms" for r in rs[1:])
+            lines.append(f"| {scen} | {rs[0]['name']} | {rs[0]['stats']['p95_ms']} | {others} |")
     envs = {json.dumps(r.get("env", {}).get("platform")) for r in results}
     if len(envs) > 1:
         lines += ["", "⚠️ Results come from different platforms — comparisons may be invalid."]
@@ -265,10 +301,10 @@ def main(argv=None) -> int:
     sp.set_defaults(fn=cmd_cmd)
     sp = sub.add_parser("http", help="benchmark an HTTP endpoint")
     load_opts(sp)
-    sp.add_argument("--url", required=True)
+    sp.add_argument("--url", required=True, help="may contain {seq}, {uuid}, {randint:a:b} (fresh per request)")
     sp.add_argument("-X", "--method", default="GET")
     sp.add_argument("-H", "--header", action="append")
-    sp.add_argument("--data")
+    sp.add_argument("--data", help="request body; may contain {seq}, {uuid}, {randint:a:b}")
     sp.add_argument("--data-file")
     sp.add_argument("--expect", help="comma-separated acceptable status codes (default 2xx/3xx)")
     sp.set_defaults(fn=cmd_http)

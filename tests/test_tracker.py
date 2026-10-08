@@ -124,5 +124,58 @@ class TrackerTest(ToolTestCase):
         self.assertNotEqual(self.t("import", f, check=False).returncode, 0)
 
 
+    def test_critical_table_does_not_override_definition(self):
+        (self.fdir / "01-requirements" / "requirements.md").write_text(REQS + """
+## 6. Critical requirements
+| ID | Why critical | Failure impact |
+|----|--------------|----------------|
+| FR-001 | data integrity | wrong ranks |
+| NFR-001 | blast radius | everyone |
+""")
+        import sys
+        sys.path.insert(0, str(self.cwd.parent))
+        out = self.t("trace").stdout
+        self.assertIn("| FR-001 | 🔴 yes |", out)
+        self.assertIn("| NFR-001 | 🔴 yes |", out)     # listed in the critical section
+        self.assertIn("| FR-002 | no |", out)
+        self.assertIn("The system shall create links", (self.fdir / "01-requirements" / "requirements.md").read_text())
+
+
+    def test_schedule_respects_deps_team_and_deadline(self):
+        self.import_tasks([
+            {"id": "T-001", "title": "a", "estimate": "S"},
+            {"id": "T-002", "title": "b", "estimate": "S"},
+            {"id": "T-003", "title": "c", "estimate": "M", "depends_on": ["T-001", "T-002"]},
+        ])
+        out = self.t("schedule", "--start", "2026-10-12", "--team", "2", "--focus", "1").stdout
+        self.assertRegex(out, r"T-001  eng\d  2026-10-12 → 2026-10-12")   # parallel on two engineers
+        self.assertRegex(out, r"T-002  eng\d  2026-10-12 → 2026-10-12")
+        self.assertRegex(out, r"T-003  eng\d  2026-10-13 → 2026-10-15")   # after both deps, 3 days
+        p = self.t("schedule", "--start", "2026-10-16", "--team", "1", "--focus", "1", "--deadline", "2026-10-20", check=False)
+        self.assertEqual(p.returncode, 1)                         # 5 workdays from Fri 16th spans a weekend
+        self.assertIn("misses deadline", p.stdout)
+        self.t("update", "T-003", "--phase", "M1")
+        self.t("update", "T-002", "--phase", "M5-later")
+        self.t("add", "--title", "later", "--phase", "M5-later")
+        out = self.t("schedule", "--start", "2026-10-12", "--phases", "M1").stdout
+        self.assertIn("T-002", out)                                    # dependency of an in-scope task
+        self.assertNotIn("later", self.t("schedule", "--start", "2026-10-12", "--phases", "M1").stdout)
+        g = self.t("schedule", "--start", "2026-10-12", "--mermaid").stdout
+        self.assertIn("gantt", g)
+        self.assertIn("excludes weekends", g)
+
+
+    def test_critical_test_depth_and_cited_tests(self):
+        (self.fdir / "01-requirements" / "requirements.md").write_text(REQS)
+        (self.fdir / "04-quality" / "test-plan.md").write_text(TESTS)
+        hld = self.fdir / "02-design" / "hld.md"
+        hld.write_text(hld.read_text() + "\nVerified by TC-001 and TC-099.\n")
+        self.import_tasks([{"id": "T-001", "title": "x", "requirements": ["FR-001", "FR-002", "NFR-001"], "acceptance": ["a"]}])
+        out = self.t("validate", check=False).stdout
+        self.assertIn("critical requirement FR-001 has 1 test case(s)", out)
+        self.assertIn("TC-099 is cited in design documents but not defined", out)
+        self.assertNotIn("TC-001 is cited", out)
+
+
 if __name__ == "__main__":
     unittest.main()

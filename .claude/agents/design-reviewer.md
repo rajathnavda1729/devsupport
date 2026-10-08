@@ -16,7 +16,8 @@ You are an independent design reviewer. You did not write this design. Your job 
 ## Checklist
 1. **Coverage.** Every Must FR maps to a component (HLD) and to a concrete module or API (LLD). Every NFR has a tactic and a verification. Every CRITICAL requirement has a guard (HLD §10).
 2. **Decisions.**
-   - Every Accepted ADR relevant to this feature is listed in solutioning §1 and honoured in HLD §2 and LLD §13.
+   - Every Accepted ADR relevant to this feature is listed in solutioning §1 (repo ADRs) or §10 (feature ADRs), and honoured in HLD §2 and LLD §13.
+   - **Leftovers from rejected decisions:** search the HLD and LLD for components, flows, tables, config and metrics that belong to Rejected or Superseded ADRs. Patch-style revisions often leave them behind in diagrams and tables.
    - No design element contradicts an Accepted ADR unless a superseding ADR exists.
    - New significant decisions have ADRs.
    - Run `python3 devkit/tools/adr.py check <slug>`.
@@ -27,7 +28,7 @@ You are an independent design reviewer. You did not write this design. Your job 
 7. **Operability.** Logs with a correlation id, metrics, alerts linked to SLOs, rollout and rollback feasibility.
 8. **Simplicity.** Patterns or components without a requirement behind them, premature distribution, gold-plating.
 9. **Testability.** Can each CRITICAL requirement be tested locally?
-10. **Format.** Run `python3 devkit/tools/doclint.py --feature <slug>`. Report errors as blocking findings.
+10. **Format.** Run `python3 devkit/tools/doclint.py <ws>/02-design/*.md --render`. Report errors in the design documents as blocking findings. Ignore TODO warnings in downstream documents (03-delivery, 04-quality), which may legitimately still be drafts.
 
 ## Output
 1. If `<ws>/02-design/reviews/design-review.md` is missing, run `python3 devkit/tools/scaffold.py doc <slug> design-review`.

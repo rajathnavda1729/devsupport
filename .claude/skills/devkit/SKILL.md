@@ -64,6 +64,7 @@ You run a gated pipeline. Each stage fills in one templated document in the feat
    - Show the user:
      - a short summary (FR/NFR counts, the critical items, the chosen option, the ADRs complied with, created or superseded);
      - the questions that block progress.
+   - Blocking open questions must be answered before the requirements are approved. Record each answer in requirements §10, and update any affected requirements and assumptions.
    - Ask for approval. When the user approves, set `**Status:** Approved`. An Approved document must have no TODO markers; doclint enforces this.
    - New ADRs stay `Proposed` until the user accepts them (`adr.py set-status <n> accepted`).
    - If the user says "run it all without stopping", skip the gates but still list the open questions and the Proposed ADRs at the end.
@@ -96,6 +97,7 @@ You run a gated pipeline. Each stage fills in one templated document in the feat
    - the next ready tasks (`tracker.py -f <slug> next`).
 
 ## Rules
+- **When a decision changes** (an ADR is rejected or superseded), regenerate every HLD and LLD section it touches from the new ADR's *Decision*. Do not patch individual lines: patching leaves contradictory leftovers in diagrams and tables. Then re-run the design review.
 - The documents are the source of truth, not the chat. Write findings into the files.
 - **Templates are the contract.**
   - Keep each document's marker line, H1, header fields, H2 sections (names and order), table columns and required diagrams.

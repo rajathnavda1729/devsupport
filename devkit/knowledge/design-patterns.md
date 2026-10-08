@@ -12,6 +12,7 @@ Used by the **solutioning** skill. Start from the *signal* you see in the requir
 | Work spans several services and must be all-or-nothing | Saga (orchestrated / choreographed), Transactional outbox |
 | "Exactly once", duplicate requests, retries by clients | Idempotency key, Outbox + inbox (dedupe), Optimistic concurrency |
 | Must publish an event whenever DB changes | Transactional outbox, Change data capture |
+| A cache / ranking store / search index derived from the SoR, with several writers | Outbox to derived store, Versioned writes (compare-and-set), Reconciliation |
 | Slow / unreliable downstream dependency | Timeout + retry with backoff & jitter, Circuit breaker, Bulkhead, Fallback, Async via queue |
 | Spiky traffic, background or long jobs | Queue-based load levelling, Competing consumers, Async request-reply (202 + status) |
 | Protect service from abuse / fairness across tenants | Rate limiting (token bucket), Throttling, Quotas |
@@ -58,6 +59,8 @@ Used by the **solutioning** skill. Start from the *signal* you see in the requir
 | **Change data capture** | Propagate DB changes without dual writes | Read DB log (e.g. Debezium) and stream | Ops complexity, schema coupling | consistency, decoupling |
 | **Sharding** | Data/throughput > single node | Partition by key | Hot keys, cross-shard queries, resharding | scalability |
 | **Read replicas** | Read scaling | Async replicas serve reads | Replication lag → stale reads | throughput, availability |
+| **Versioned writes (compare-and-set)** | Several writers (live, retry, repair, rebuild, admin) update a derived store, so an older value can land last | Monotonic version from the source of truth; the store applies a write only if version > stored version (Lua script / conditional update) | Version must come from the SoR row, not a clock; removals become versioned tombstones | correctness of derived stores |
+| **Outbox to derived store** | Keep a cache/search index/ranking store in sync with the SoR without a crash window | Same transaction writes a `dirty(id, version)` row; a writer re-reads the current SoR row and applies it (versioned), deletes the dirty row only if unchanged | Writer lag is the staleness signal; needs a rebuild path that replays dirty rows newer than the snapshot | consistency, recoverability |
 | **Leader election** | One active worker | Lease via consensus store (etcd/ZK/DB lock) | Split brain — use fencing tokens | correctness |
 
 ## Resilience patterns

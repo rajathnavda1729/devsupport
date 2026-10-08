@@ -21,6 +21,8 @@ Diagrams are code: they live in the markdown next to the text they explain and a
 - Avoid characters that break parsing inside labels: wrap labels in quotes when they contain `()`, `:`, `/`, `#` — `a["POST /orders (v2)"]`.
 - Label every edge with the verb or protocol: `api -->|gRPC| svc`.
 - Shapes: `[(db)]` datastores, `([actor])` people, `[[queue]]` queues/topics, `{decision}` decisions.
+- Never use `;` inside sequence-diagram messages or notes: it is a statement separator. Use commas.
+- Validate diagrams for real with `devkit lint --render`, which needs `npm i -g @mermaid-js/mermaid-cli`.
 - Sequence diagrams show the error path with `alt` / `opt` / `loop` blocks and use `-->>` for responses.
 - Reference requirement IDs in notes where a flow realises a critical requirement: `Note over A,B: FR-003 (CRITICAL) idempotent`.
 - Do not add a diagram that restates a table. Add one when relationships or ordering matter.

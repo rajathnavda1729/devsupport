@@ -42,6 +42,11 @@ class DoclintTest(ToolTestCase):
         self.hld.write_text(text.replace("flowchart LR\n  user", "flowchat LR\n  user", 1))
         self.assertIn("does not start with a diagram type", self.lint(self.hld).stdout)
 
+    def test_semicolon_in_sequence_message(self):
+        t = self.hld.read_text().replace("  A->>D: query", "  A->>D: BEGIN; query; COMMIT", 1)
+        self.hld.write_text(t)
+        self.assertIn("contains ';'", self.lint(self.hld).stdout)
+
     def test_none_section_is_allowed(self):
         text = self.req.read_text()
         start = text.index("## 9. Dependencies")
@@ -87,6 +92,17 @@ class HookTest(ToolTestCase):
         for f in ("03-delivery/TASKS.md", "03-delivery/tasks.json", "README.md"):
             self.assertEqual(self.hook("guard_generated.py", ws / f).returncode, 2, f)
         self.assertEqual(self.hook("guard_generated.py", ws / "02-design/hld.md").returncode, 0)
+
+    def test_guard_asks_before_editing_approved_docs(self):
+        self.run_tool("scaffold.py", "new", "demo", "--text", "x")
+        hld = self.cwd / "specs/demo/02-design/hld.md"
+        self.assertEqual(self.hook("guard_generated.py", hld).stdout, "")          # Draft: no prompt
+        hld.write_text(hld.read_text().replace("**Status:** Draft", "**Status:** Approved"))
+        p = self.hook("guard_generated.py", hld)
+        self.assertEqual(p.returncode, 0)
+        decision = json.loads(p.stdout)["hookSpecificOutput"]
+        self.assertEqual(decision["permissionDecision"], "ask")
+        self.assertIn("Approved document", decision["permissionDecisionReason"])
 
     def test_lint_hook_reports_template_drift_and_refreshes_index(self):
         self.run_tool("scaffold.py", "new", "demo", "--text", "x")

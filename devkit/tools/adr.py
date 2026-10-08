@@ -15,6 +15,7 @@ Examples:
   adr.py new --title "PostgreSQL is the system of record" --retroactive --tags data
   adr.py new --title "Move to Kafka" --supersedes 4
   adr.py set-status 12 accepted
+  adr.py retitle 12 --title "Revised decision title"     # Proposed ADRs only
   adr.py check payment-retry                   # feature docs cite existing, non-superseded ADRs
 """
 from __future__ import annotations
@@ -411,7 +412,9 @@ def cmd_new(a) -> int:
         scope = "repository"
     target.mkdir(parents=True, exist_ok=True)
     prefix, width = naming_style(target)
-    slug = re.sub(r"[^a-z0-9]+", "-", a.title.lower()).strip("-")[:60]
+    slug = re.sub(r"[^a-z0-9]+", "-", a.title.lower()).strip("-")
+    if len(slug) > 60:  # cut at a word boundary, never mid-word
+        slug = slug[:61].rsplit("-", 1)[0]
     path = target / f"{prefix}{num:0{width}d}-{slug}.md"
     old = find(adrs, str(a.supersedes)) if a.supersedes else None
     status = norm_status(a.status) if a.status else ("Accepted" if a.retroactive else "Proposed")
@@ -482,10 +485,56 @@ def check_feature(ws: Path, adrs: list[dict]) -> tuple[list[str], list[str]]:
         if accepted_repo and not rows and "none" not in ctx.lower():
             errors.append(f"{DOCS['solutioning']['path']} §1 is empty but the repo has {len(accepted_repo)} accepted "
                           "ADR(s) — run adr.py search and record their impact (or write 'None relevant' with reason)")
+    # "Decisions applied" tables must reflect the decisions actually in force.
+    applied_sections = {"hld": "2. Architecture decisions applied", "lld": "13. Decisions applied"}
+    applied: dict[str, set[int]] = {}
+    for doc_type, sec in applied_sections.items():
+        path = ws / DOCS[doc_type]["path"]
+        if not path.exists():
+            continue
+        body = re.sub(r"<!--.*?-->", "", section(path.read_text(encoding="utf-8"), sec), flags=re.S)
+        ids = {int(n) for ln in body.splitlines() if ln.startswith("|") for n in ID_RE.findall(ln.split("|")[1])}
+        applied[doc_type] = ids
+        for n in sorted(ids):
+            x = by_num.get(n)
+            if x and x["status"] in INACTIVE:
+                errors.append(f"{DOCS[doc_type]['path']} §{sec.split('.')[0]} applies {x['status'].lower()} {x['id']} — "
+                              "remove it or replace it with the decision now in force")
+    if sol.exists() and applied.get("hld"):
+        in_force = {int(n) for n in ID_RE.findall(re.sub(r"<!--.*?-->", "", section(sol.read_text(encoding="utf-8"),
+                                                                                    "10. New decisions"), flags=re.S))}
+        for n in sorted(in_force):
+            x = by_num.get(n)
+            if x and x["status"] not in INACTIVE and n not in applied["hld"]:
+                errors.append(f"{DOCS['hld']['path']} §2 does not apply {x['id']} from solutioning §10 — "
+                              "the HLD may be stale relative to the chosen solution")
     for x in adrs:
         if x["scope"] == f"feature:{ws.name}" and x["status"] == "Proposed":
             warnings.append(f"{x['id']} ({x['path']}) is still Proposed")
     return errors, warnings
+
+
+def cmd_retitle(a) -> int:
+    """Rename a Proposed ADR (title + file name) after its content was revised before acceptance."""
+    adrs = load_registry(refresh=True)
+    x = find(adrs, a.ref)
+    if x["status"] != "Proposed":
+        die(f"{x['id']} is {x['status']} — only Proposed ADRs can be retitled; write a superseding ADR instead")
+    old = project_root() / x["path"]
+    if read_marker(old)[0] != "adr":
+        die(f"{x['path']} is not a devkit-format ADR")
+    text = re.sub(r"^# .*$", f"# {x['id']}: {a.title}", old.read_text(encoding="utf-8"), count=1, flags=re.M)
+    m = re.match(r"^((?:adr[-_ ]?)?\d+[-_ ])", old.name, re.I)
+    slug = re.sub(r"[^a-z0-9]+", "-", a.title.lower()).strip("-")
+    if len(slug) > 60:
+        slug = slug[:61].rsplit("-", 1)[0]
+    new = old.with_name(f"{m.group(1) if m else ''}{slug}.md")
+    write_atomic(new, text)
+    if new != old:
+        old.unlink()
+    load_registry(refresh=True)
+    print(new)
+    return 0
 
 
 def cmd_check(a) -> int:
@@ -538,6 +587,10 @@ def main(argv=None) -> int:
     sp.add_argument("ref")
     sp.add_argument("status")
     sp.set_defaults(fn=cmd_set_status)
+    sp = sub.add_parser("retitle", help="rename a Proposed ADR after revising its content")
+    sp.add_argument("ref")
+    sp.add_argument("--title", required=True)
+    sp.set_defaults(fn=cmd_retitle)
     sp = sub.add_parser("check", help="verify a feature's decision references")
     sp.add_argument("feature", nargs="?")
     sp.set_defaults(fn=cmd_check)

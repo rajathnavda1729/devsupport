@@ -16,10 +16,11 @@ argument-hint: "<feature-slug>"
 | Check | Passes when |
 |-------|-------------|
 | Design documents approved | requirements, solutioning, hld and lld are `Approved`; execution-plan and test-plan are at least `Review` |
+| Blocking open questions answered | every row in requirements §10 marked *Blocking? Yes* has an answer |
 | Design review | `02-design/reviews/design-review.md` is Approved, its verdict is APPROVE or APPROVE WITH CHANGES, and every blocking finding is marked resolved |
 | Options thoroughly compared | the matrix is valid (weights = 100, ≥2 options), and any close or fragile call has evidence or an explicit override, and the recommendation matches the winner or carries an `**Override:**` line; ≥1 rejected alternative |
-| Prior decisions respected | `adr.py check` is clean: decision context filled, no citation of a missing or superseded ADR |
-| Decisions evaluated and accepted | every feature ADR, and every ADR in solutioning §10, passes `review decision` and is `Accepted` |
+| Prior decisions respected | `adr.py check` is clean: decision context filled, no citation of a missing ADR; HLD §2 and LLD §13 apply only ADRs in force, and HLD §2 includes every live decision from solutioning §10 |
+| Decisions evaluated and accepted | every feature ADR, and every ADR in solutioning §10, passes `review decision` and is `Accepted`. Rejected, deprecated and superseded ADRs are records, so they don't block |
 | Documents match templates | `doclint` reports 0 errors |
 | Tasks valid and traceable | `tracker.py validate` is clean, with ≥1 task |
 

@@ -12,6 +12,7 @@ Examples:
   tracker.py block T-004 --note "waiting on API key"
   tracker.py next                               # ready tasks, highest priority first
   tracker.py waves                              # parallelisable waves + critical path
+  tracker.py schedule --start 2026-10-12 --team 3 --focus 0.7 --deadline 2026-11-20 [--mermaid]
   tracker.py validate                           # deps, cycles, requirement & test coverage
   tracker.py trace                              # writes traceability.md
 """
@@ -24,7 +25,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from devkit_common import (BOARD_FILE, TASKS_FILE, TRACE_FILE, die, doc_marker, load_json, now_iso,
+from devkit_common import (BOARD_FILE, TASKS_FILE, TEST_PLAN_FILE, TRACE_FILE, die, doc_marker, load_json, now_iso,
                            parse_requirements, parse_test_cases, resolve_feature, write_atomic)
 
 STATUSES = ["todo", "in_progress", "review", "blocked", "done", "cancelled"]
@@ -263,6 +264,21 @@ def render_trace(store: Store) -> tuple[str, list[str], list[str]]:
             (errors if crit else warnings).append(f"{'critical ' if crit else ''}requirement {rid} has {g}")
         lines.append(f"| {rid} | {'🔴 yes' if crit else 'no'} | {', '.join(tasks_for[rid]) or '-'} | "
                      f"{', '.join(tests_for[rid]) or '-'} | {status} |")
+    for rid, info in reqs.items():
+        if info["critical"] and cases and 0 < len(tests_for[rid]) < 3:
+            warnings.append(f"critical requirement {rid} has {len(tests_for[rid])} test case(s); the rule asks for "
+                            "positive, negative and failure-injection cases (≥ 3)")
+    if cases:
+        cited = set()
+        for f in store.dir.rglob("*.md"):
+            if f.name in (Path(TEST_PLAN_FILE).name, Path(TRACE_FILE).name, "README.md"):
+                continue
+            text = f.read_text(encoding="utf-8")
+            if re.search(r"^\*\*Status:\*\*\s*(Rejected|Superseded|Deprecated)", text, re.M):
+                continue  # inactive decision records may cite tests that were never needed
+            cited |= set(re.findall(r"\bTC-\d+\b", re.sub(r"<!--.*?-->", "", text, flags=re.S)))
+        for tc in sorted(cited - set(cases)):
+            warnings.append(f"{tc} is cited in design documents but not defined in the test plan")
     unknown = sorted((set(tasks_for) | set(tests_for)) - set(reqs)) if reqs else []
     for rid in unknown:
         errors.append(f"{rid} is referenced by tasks/tests but not defined in requirements")
@@ -442,6 +458,101 @@ def cmd_waves(store: Store, a) -> None:
     print(f"Critical path ({length:g} pts): {' -> '.join(path) or '-'}")
 
 
+def add_workdays(day, n: int):
+    """Date after n working days (Mon–Fri) starting at `day` (day itself counts when it is a workday)."""
+    import datetime as dt
+    d = day
+    while d.weekday() >= 5:
+        d += dt.timedelta(days=1)
+    done = 0
+    while True:
+        if d.weekday() < 5:
+            done += 1
+            if done >= n:
+                return d
+        d += dt.timedelta(days=1)
+
+
+def next_workday(day):
+    import datetime as dt
+    d = day + dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d += dt.timedelta(days=1)
+    return d
+
+
+def schedule(store: Store, start, team: int, focus: float, phases: list[str] | None = None) -> list[dict]:
+    """Greedy list scheduling: dependency-ordered, critical path and priority first, `team` parallel engineers."""
+    import math
+    waves, cyclic = dependency_waves(store.tasks)
+    if cyclic:
+        die(f"cannot schedule: dependency cycle among {', '.join(cyclic)}")
+    tmap = store.by_id()
+    crit = set(critical_path(store.tasks)[0])
+    wave_of = {tid: i for i, w in enumerate(waves) for tid in w}
+    scope = None
+    if phases:
+        scope = {t["id"] for t in store.tasks if t["phase"] in phases}
+        stack = list(scope)
+        while stack:  # include dependencies of in-scope tasks, whatever their phase
+            for d in tmap.get(stack.pop(), {}).get("depends_on", []):
+                if d not in scope and d in tmap:
+                    scope.add(d)
+                    stack.append(d)
+    order = sorted((t for t in store.tasks if t["status"] not in CLOSED and (scope is None or t["id"] in scope)),
+                   key=lambda t: (wave_of[t["id"]], t["id"] not in crit, t["priority"], t["id"]))
+    free = [start] * team
+    end_of: dict[str, object] = {}
+    plan = []
+    for t in order:
+        days = max(1, math.ceil(points(t) / focus))
+        ready = start
+        for d in t["depends_on"]:
+            if d in end_of:
+                ready = max(ready, next_workday(end_of[d]))
+        who = min(range(team), key=lambda i: max(free[i], ready))
+        begin = max(free[who], ready)
+        finish = add_workdays(begin, days)
+        end_of[t["id"]] = finish
+        free[who] = next_workday(finish)
+        plan.append({"id": t["id"], "title": t["title"], "engineer": who + 1, "start": begin, "end": finish,
+                     "days": days, "critical": t["id"] in crit, "phase": t["phase"] or "unphased"})
+    return plan
+
+
+def cmd_schedule(store: Store, a) -> None:
+    import datetime as dt
+    start = dt.date.fromisoformat(a.start) if a.start else dt.date.today()
+    plan = schedule(store, start, a.team, a.focus, a.phases.split(",") if a.phases else None)
+    if not plan:
+        print("nothing left to schedule")
+        return
+    finish = max(p["end"] for p in plan)
+    if a.mermaid:
+        print("gantt")
+        print(f"  title {store.data.get('title') or store.dir.name} — {a.team} engineers, focus {a.focus:g}")
+        print("  dateFormat YYYY-MM-DD")
+        print("  excludes weekends")
+        for phase in dict.fromkeys(p["phase"] for p in plan):
+            print(f"  section {phase}")
+            for p in (x for x in plan if x["phase"] == phase):
+                tag = "crit, " if p["critical"] else ""
+                label = f"{p['id']} {p['title'][:40]}".replace(":", " ").replace(";", ",").replace("#", "")
+                print(f"  {label} :{tag}{p['id'].replace('-', '')}, {p['start'].isoformat()}, {p['days']}d")
+    else:
+        for p in plan:
+            print(f"{p['id']:<6} eng{p['engineer']}  {p['start']} → {p['end']}  ({p['days']}d){'  ★ critical' if p['critical'] else ''}"
+                  f"  {p['title'][:55]}")
+    print(f"\nfinish: {finish} ({a.team} engineers, focus {a.focus:g}, 1 point = 1 ideal day)", file=sys.stderr if a.mermaid else sys.stdout)
+    if a.deadline:
+        deadline = dt.date.fromisoformat(a.deadline)
+        slack = (deadline - finish).days
+        verdict = f"✅ {slack} calendar day(s) of slack" if slack >= 0 else f"❌ misses deadline by {-slack} calendar day(s)"
+        print(f"deadline {deadline}: {verdict}", file=sys.stderr if a.mermaid else sys.stdout)
+        if slack < 0:
+            sys.exit(1)
+
+
 def cmd_stats(store: Store, a) -> None:
     by_status = defaultdict(int)
     for t in store.tasks:
@@ -560,6 +671,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_waves)
     sub.add_parser("stats").set_defaults(fn=cmd_stats)
+    sp = sub.add_parser("schedule", help="assign tasks to engineers, compute dates, check a deadline")
+    sp.add_argument("--start", help="start date YYYY-MM-DD (default today)")
+    sp.add_argument("--team", type=int, default=3)
+    sp.add_argument("--focus", type=float, default=0.7, help="ideal days per working day per engineer")
+    sp.add_argument("--deadline", help="YYYY-MM-DD; exit 1 if the schedule finishes later")
+    sp.add_argument("--mermaid", action="store_true", help="print a mermaid gantt chart (summary to stderr)")
+    sp.add_argument("--phases", help="only schedule tasks in these phases (comma list) plus their dependencies")
+    sp.set_defaults(fn=cmd_schedule)
     sp = sub.add_parser("validate", help="check deps, cycles, coverage")
     sp.add_argument("--warn-only", action="store_true")
     sp.set_defaults(fn=cmd_validate)
